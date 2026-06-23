@@ -186,7 +186,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "krun-hello"
+name = "krun-build-image"
 version = "0.1.0"
 dependencies = [
  "clap",

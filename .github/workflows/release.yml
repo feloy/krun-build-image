@@ -40,13 +40,13 @@ jobs:
       - name: Create archive
         run: |
           cd dist
-          zip -r ../krun-hello-macos-arm64.zip .
+          zip -r ../krun-build-image-macos-arm64.zip .
 
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ github.ref_name }}" \
-            krun-hello-macos-arm64.zip \
-            --title "krun-hello ${{ github.ref_name }}" \
+            krun-build-image-macos-arm64.zip \
+            --title "krun-build-image ${{ github.ref_name }}" \
             --generate-notes

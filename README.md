@@ -1,10 +1,10 @@
-# krun-hello
+# krun-build-image
 
 A Rust CLI that builds OCI images from a Containerfile inside a lightweight Linux microVM — using [libkrun](https://github.com/libkrun/libkrun).
 
 ## What it does
 
-When you run `krun-hello`, it:
+When you run `krun-build-image`, it:
 
 1. Spins up a lightweight Linux microVM on your Mac using Apple's [Hypervisor.framework](https://developer.apple.com/documentation/hypervisor) — no Docker, no QEMU, no root required.
 2. Mounts three host directories into the VM via [virtio-fs](https://virtio-fs.gitlab.io/): the build rootfs (as `/`), the build context, and the output directory.
@@ -16,7 +16,7 @@ The VM is fully isolated: it runs its own Linux kernel with its own process name
 ## Usage
 
 ```sh
-krun-hello [OPTIONS] <CONTEXT>
+krun-build-image [OPTIONS] <CONTEXT>
 ```
 
 | Argument / Option | Description | Default |
@@ -32,7 +32,7 @@ krun-hello [OPTIONS] <CONTEXT>
 Example:
 
 ```sh
-krun-hello --rootfs /tmp/build-rootfs -t myapp:latest ./myproject
+krun-build-image --rootfs /tmp/build-rootfs -t myapp:latest ./myproject
 ```
 
 This builds the image from `./myproject/Containerfile` and writes an OCI image layout to `./output/`.
@@ -40,7 +40,7 @@ This builds the image from `./myproject/Containerfile` and writes an OCI image l
 If the Containerfile is outside the context directory, pass its path explicitly:
 
 ```sh
-krun-hello --rootfs /tmp/build-rootfs -f ../Containerfile -t myapp:latest ./myproject
+krun-build-image --rootfs /tmp/build-rootfs -f ../Containerfile -t myapp:latest ./myproject
 ```
 
 ## How it uses libkrun
@@ -145,7 +145,7 @@ This creates a `dist/` directory:
 
 ```text
 dist/
-  krun-hello       — release binary (signed)
+  krun-build-image       — release binary (signed)
   libs/            — all dylib dependencies (libkrun, libkrunfw, etc.)
 ```
 
@@ -154,9 +154,9 @@ End-users need nothing installed. Distribute the `dist/` directory as a zip or D
 **Installing as an end-user** — macOS quarantines files downloaded from the internet. Before unzipping, strip the quarantine flag to avoid the "cannot be opened because the developer cannot be verified" dialog:
 
 ```sh
-xattr -d com.apple.quarantine krun-hello-macos-arm64.zip
-unzip krun-hello-macos-arm64.zip -d krun-hello
-./krun-hello/krun-hello --rootfs /tmp/build-rootfs -t myapp:latest ./myproject
+xattr -d com.apple.quarantine krun-build-image-macos-arm64.zip
+unzip krun-build-image-macos-arm64.zip -d krun-build-image
+./krun-build-image/krun-build-image --rootfs /tmp/build-rootfs -t myapp:latest ./myproject
 ```
 
 **For notarized distribution** (App Store / Gatekeeper), replace `--sign -` in `dist.sh` with your Developer ID certificate and add `--options runtime`:
@@ -165,7 +165,7 @@ unzip krun-hello-macos-arm64.zip -d krun-hello
 codesign --sign "Developer ID Application: You (TEAMID)" \
          --options runtime \
          --entitlements entitlements.plist \
-         --force dist/krun-hello
+         --force dist/krun-build-image
 ```
 
 Then notarize with `xcrun notarytool`.

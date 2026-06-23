@@ -44,7 +44,7 @@ fn debug_enabled() -> bool {
 macro_rules! dbg_log {
     ($($arg:tt)*) => {
         if debug_enabled() {
-            eprintln!("[krun-hello] {}", format!($($arg)*));
+            eprintln!("[krun-build-image] {}", format!($($arg)*));
         }
     };
 }
@@ -63,7 +63,7 @@ fn check(call: &str, ret: i32) {
 /// mounts the build context and output directory via virtio-fs, and runs
 /// buildah to produce an OCI image layout at the output path.
 #[derive(Parser)]
-#[command(name = "krun-hello")]
+#[command(name = "krun-build-image")]
 struct Cli {
     /// Build context directory
     context: PathBuf,

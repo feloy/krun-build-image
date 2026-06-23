@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-BINARY="krun-hello"
+BINARY="krun-build-image"
 BUILD="target/release/$BINARY"
 DIST="dist"
 LIBS="$DIST/libs"
@@ -16,7 +16,7 @@ cargo build --release
 
 rm -rf "$DIST"
 mkdir -p "$LIBS"
-# The actual binary is krun-hello.bin; krun-hello is a wrapper script that
+# The actual binary is krun-build-image.bin; krun-build-image is a wrapper script that
 # sets DYLD_LIBRARY_PATH so dlopen can find libkrunfw.
 cp "$BUILD" "$DIST/$BINARY.bin"
 
@@ -56,7 +56,7 @@ codesign --sign - --entitlements entitlements.plist --force "$DIST/$BINARY.bin"
 cat > "$DIST/$BINARY" << 'EOF'
 #!/bin/sh
 DIR="$(cd "$(dirname "$0")" && pwd)"
-DYLD_LIBRARY_PATH="$DIR/libs:${DYLD_LIBRARY_PATH}" "$DIR/krun-hello.bin" "$@"
+DYLD_LIBRARY_PATH="$DIR/libs:${DYLD_LIBRARY_PATH}" "$DIR/krun-build-image.bin" "$@"
 EOF
 chmod +x "$DIST/$BINARY"
 
