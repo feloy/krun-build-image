@@ -1,8 +1,8 @@
-FROM fedora:latest
+FROM alpine:edge
 
-RUN dnf install -y buildah && \
-    dnf clean all && \
-    rm -rf /var/cache/dnf
+# buildah lives in the community repo, which is not enabled in the base image.
+RUN echo "https://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories && \
+    apk add --no-cache buildah netavark
 
 # virtiofs does not support overlayfs, so tell buildah to use vfs instead.
 RUN mkdir -p /etc/containers && \
@@ -13,6 +13,6 @@ RUN mkdir -p /etc/containers && \
 # Loopback addresses (127.0.0.53 from systemd-resolved) are not routable via TSI.
 RUN echo "nameserver 1.1.1.1" > /etc/resolv.conf
 
-# Build helper invoked by the krun-hello host binary.
+# Build helper invoked by the krun-build-image host binary.
 COPY krun-build /usr/local/bin/krun-build
 RUN chmod +x /usr/local/bin/krun-build
