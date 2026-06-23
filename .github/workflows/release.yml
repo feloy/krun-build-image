@@ -9,8 +9,29 @@ permissions:
   contents: write  # required to create GitHub releases
 
 jobs:
+  build-rootfs:
+    runs-on: ubuntu-24.04-arm  # native arm64 — podman works without a VM
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Install podman
+        run: sudo apt-get update && sudo apt-get install -y podman
+
+      - name: Build VM rootfs
+        run: |
+          chmod +x vm-image/make-rootfs.sh
+          ./vm-image/make-rootfs.sh ./rootfs
+
+      - name: Upload rootfs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: krun-build-rootfs
+          path: rootfs/
+
   release:
     runs-on: macos-26  # Apple Silicon (arm64)
+    needs: build-rootfs
 
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -36,6 +57,12 @@ jobs:
         run: |
           chmod +x dist.sh
           ./dist.sh
+
+      - name: Download rootfs
+        uses: actions/download-artifact@v4
+        with:
+          name: krun-build-rootfs
+          path: dist/rootfs
 
       - name: Create archive
         run: |

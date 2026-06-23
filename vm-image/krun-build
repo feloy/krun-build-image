@@ -28,5 +28,5 @@ fi
 mkdir -p /var/lib/containers
 mount -t tmpfs -o size=8192m tmpfs /var/lib/containers
 
-buildah bud --isolation chroot -f "$CFILE" -t "$TAG" /build/context
+buildah bud --isolation chroot --network host -f "$CFILE" -t "$TAG" /build/context
 buildah push --format oci "$TAG" oci:/build/output
