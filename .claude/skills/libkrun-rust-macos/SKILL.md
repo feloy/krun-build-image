@@ -38,13 +38,13 @@ Then `source ~/.zshrc`.
 
 ### Linux root filesystem
 
-The VM needs a Linux rootfs directory. Quickest way using Docker + Alpine (must be arm64):
+The VM needs a Linux rootfs directory. Quickest way using Podman + Alpine (must be arm64):
 
 ```sh
-docker create --platform linux/arm64 --name tmp alpine sh
+podman create --platform linux/arm64 --name tmp alpine sh
 mkdir -p /tmp/rootfs
-docker export tmp | tar -C /tmp/rootfs -x
-docker rm tmp
+podman export tmp | tar -C /tmp/rootfs -x
+podman rm tmp
 ```
 
 ---

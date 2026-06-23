@@ -1,0 +1,18 @@
+FROM fedora:latest
+
+RUN dnf install -y buildah && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+
+# virtiofs does not support overlayfs, so tell buildah to use vfs instead.
+RUN mkdir -p /etc/containers && \
+    printf '[storage]\ndriver = "vfs"\n' > /etc/containers/storage.conf
+
+# The libkrun TSI network backend proxies all inet connections through the host,
+# but the guest still needs /etc/resolv.conf to point to a reachable nameserver.
+# Loopback addresses (127.0.0.53 from systemd-resolved) are not routable via TSI.
+RUN echo "nameserver 1.1.1.1" > /etc/resolv.conf
+
+# Build helper invoked by the krun-hello host binary.
+COPY krun-build /usr/local/bin/krun-build
+RUN chmod +x /usr/local/bin/krun-build

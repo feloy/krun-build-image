@@ -1,0 +1,32 @@
+#!/bin/sh
+# Invoked by the krun-hello host binary inside the microVM.
+# Usage: krun-build <containerfile-vm-path> <tag> <cfile-outside-context>
+#   containerfile-vm-path  path to the Containerfile inside the VM
+#   tag                    image tag for buildah
+#   cfile-outside-context  1 if the Containerfile is outside the build context, 0 otherwise
+set -e
+
+CFILE="$1"
+TAG="$2"
+CFILE_OUTSIDE="${3:-0}"
+
+mkdir -p /build/context /build/output
+mount -t virtiofs krun-context /build/context
+mount -t virtiofs krun-output  /build/output
+
+if [ "$CFILE_OUTSIDE" = "1" ]; then
+    mkdir -p /build/cfile
+    mount -t virtiofs krun-cfile /build/cfile
+fi
+
+# virtiofs on APFS does not fully support xattrs: lgetxattr on dangling symlinks
+# returns ENOENT, which breaks buildah's VFS layer copy. Mount tmpfs over the
+# buildah storage root so xattr operations happen on a native Linux filesystem.
+# The size limit must accommodate pulled base image layers (VFS stores full copies,
+# so a typical Fedora build needs 2-4 GB). Set an explicit limit rather than
+# relying on the kernel default (50% of RAM), which is too small.
+mkdir -p /var/lib/containers
+mount -t tmpfs -o size=8192m tmpfs /var/lib/containers
+
+buildah bud --isolation chroot -f "$CFILE" -t "$TAG" /build/context
+buildah push --format oci "$TAG" oci:/build/output

@@ -1,34 +1,68 @@
 # krun-hello
 
-A minimal Rust app that boots a real Linux virtual machine and prints "Hello from libkrun VM!" — using [libkrun](https://github.com/libkrun/libkrun).
+A Rust CLI that builds OCI images from a Containerfile inside a lightweight Linux microVM — using [libkrun](https://github.com/libkrun/libkrun).
 
 ## What it does
 
 When you run `krun-hello`, it:
 
 1. Spins up a lightweight Linux microVM on your Mac using Apple's [Hypervisor.framework](https://developer.apple.com/documentation/hypervisor) — no Docker, no QEMU, no root required.
-2. Mounts a Linux root filesystem you provide into that VM via [virtio-fs](https://virtio-fs.gitlab.io/) (a high-performance host–guest filesystem share).
-3. Executes `/bin/echo "Hello from libkrun VM!"` inside the VM.
-4. Prints the output to your terminal and exits.
+2. Mounts three host directories into the VM via [virtio-fs](https://virtio-fs.gitlab.io/): the build rootfs (as `/`), the build context, and the output directory.
+3. Runs `buildah bud` inside the VM to build the image from the Containerfile.
+4. Exports the resulting OCI image layout to the output directory on the host and exits.
 
-The whole boot-to-output cycle takes under a second. The VM is fully isolated: it runs its own Linux kernel with its own process namespace, but shares no persistent state with your host.
+The VM is fully isolated: it runs its own Linux kernel with its own process namespace, but shares no persistent state with your host.
+
+## Usage
+
+```sh
+krun-hello [OPTIONS] <CONTEXT>
+```
+
+| Argument / Option | Description | Default |
+|---|---|---|
+| `<CONTEXT>` | Build context directory | (required) |
+| `--rootfs <DIR>` | VM root filesystem — must have `buildah` installed | (required) |
+| `-f, --file <FILE>` | Path to the Containerfile | `<CONTEXT>/Containerfile` |
+| `-o, --output <DIR>` | Output directory for the OCI image layout | `./output` |
+| `-t, --tag <TAG>` | Image tag used by buildah | `krun-build` |
+| `--cpus <N>` | Number of vCPUs | `2` |
+| `--memory <MB>` | RAM in MiB | `2048` |
+
+Example:
+
+```sh
+krun-hello --rootfs /tmp/build-rootfs -t myapp:latest ./myproject
+```
+
+This builds the image from `./myproject/Containerfile` and writes an OCI image layout to `./output/`.
+
+If the Containerfile is outside the context directory, pass its path explicitly:
+
+```sh
+krun-hello --rootfs /tmp/build-rootfs -f ../Containerfile -t myapp:latest ./myproject
+```
 
 ## How it uses libkrun
 
-[libkrun](https://github.com/libkrun/libkrun) is a library that turns the virtual machine setup dance — kernel, memory, vCPUs, virtio devices — into a handful of function calls. Under the hood it uses Apple's Hypervisor.framework on macOS (the same primitive that powers Apple's own virtualization stack), so it requires no kernel extensions and no elevated privileges.
+[libkrun](https://github.com/libkrun/libkrun) is a library that turns the virtual machine setup dance — kernel, memory, vCPUs, virtio devices — into a handful of function calls. Under the hood it uses Apple's Hypervisor.framework on macOS, so it requires no kernel extensions and no elevated privileges.
 
-The Rust crate [`krun-sys`](https://crates.io/crates/krun-sys) provides generated FFI bindings to libkrun's C API. This app calls the following functions in order:
+The Rust crate [`krun-sys`](https://crates.io/crates/krun-sys) provides generated FFI bindings to libkrun's C API. This app calls the following functions:
 
 | Call | What it does |
 |------|-------------|
 | `krun_create_ctx()` | Allocates a new VM context; returns an integer context ID |
-| `krun_set_vm_config(ctx, vcpus, ram_mib)` | Configures the VM with 1 vCPU and 512 MiB of RAM |
-| `krun_add_virtiofs(ctx, "/dev/root", path)` | Shares the host rootfs directory into the VM; the tag `"/dev/root"` (`KRUN_FS_ROOT_TAG`) tells the bundled kernel to mount it as `/` |
+| `krun_set_vm_config(ctx, vcpus, ram_mib)` | Configures the VM resources |
+| `krun_add_virtiofs(ctx, "/dev/root", rootfs)` | Mounts the build rootfs as `/` inside the VM (`"/dev/root"` = `KRUN_FS_ROOT_TAG`) |
+| `krun_add_virtiofs(ctx, "krun-context", context)` | Exposes the build context directory to the VM |
+| `krun_add_virtiofs(ctx, "krun-output", output)` | Exposes the output directory to the VM |
 | `krun_set_workdir(ctx, "/")` | Sets the working directory inside the VM |
-| `krun_set_exec(ctx, "/bin/echo", argv, envp)` | Sets the binary and arguments to run inside the VM |
-| `krun_start_enter(ctx)` | Boots the VM — this call transfers control and never returns on success |
+| `krun_set_exec(ctx, "/bin/sh", argv, envp)` | Runs a shell script that mounts the virtiofs shares and invokes `buildah bud` |
+| `krun_start_enter(ctx)` | Boots the VM — this call transfers control and does not return on success |
 
 libkrun bundles its own Linux kernel via [libkrunfw](https://github.com/libkrun/homebrew-krun), so you do not need to supply or configure a kernel yourself.
+
+The `krun-context` and `krun-output` virtiofs shares are not auto-mounted by the kernel — the shell script mounts them at `/build/context` and `/build/output` before running buildah.
 
 ## Prerequisites
 
@@ -73,18 +107,18 @@ Then reload your shell:
 source ~/.zshrc
 ```
 
-### 4. A Linux root filesystem
+### 4. A build rootfs with buildah
 
-The VM needs a Linux rootfs directory to boot into. The quickest way to get one is to export a Docker container:
+The VM boots using a Linux rootfs that must have `buildah` installed. The `vm-image/` directory provides a ready-to-use `Containerfile` (Fedora + buildah) and a script to build and export it:
 
 ```sh
-docker create --name tmp alpine sh
-mkdir -p /tmp/rootfs
-docker export tmp | tar -C /tmp/rootfs -x
-docker rm tmp
+chmod +x vm-image/make-rootfs.sh
+./vm-image/make-rootfs.sh /tmp/krun-build-rootfs
 ```
 
-This gives you a minimal Alpine Linux filesystem at `/tmp/rootfs`.
+This requires Podman. It builds a `linux/arm64` image and exports it to the given path.
+
+The rootfs is pre-configured to use the `vfs` buildah storage driver — virtiofs does not support overlayfs, so the default overlay driver would fail inside the VM.
 
 ## Build and run
 
@@ -92,17 +126,10 @@ On macOS, processes that use `Hypervisor.framework` must be signed with the `com
 
 ```sh
 chmod +x run.sh
-./run.sh /tmp/rootfs
+./run.sh --rootfs /tmp/build-rootfs -t myapp:latest ./myproject
 ```
 
 It builds the binary, signs it with `entitlements.plist`, then runs it. You cannot use `cargo run` directly — every `cargo run` rebuilds the binary, which clears the code signature.
-
-Expected output:
-
-```text
-Booting libkrun VM (rootfs: /tmp/rootfs)...
-Hello from libkrun VM!
-```
 
 ## Distribution
 
@@ -129,7 +156,7 @@ End-users need nothing installed. Distribute the `dist/` directory as a zip or D
 ```sh
 xattr -d com.apple.quarantine krun-hello-macos-arm64.zip
 unzip krun-hello-macos-arm64.zip -d krun-hello
-./krun-hello/krun-hello /tmp/rootfs
+./krun-hello/krun-hello --rootfs /tmp/build-rootfs -t myapp:latest ./myproject
 ```
 
 **For notarized distribution** (App Store / Gatekeeper), replace `--sign -` in `dist.sh` with your Developer ID certificate and add `--options runtime`:
@@ -150,11 +177,14 @@ Then notarize with `xcrun notarytool`.
 ## Project structure
 
 ```text
-src/main.rs        — VM setup, boot logic, libkrunfw pre-loader
-Cargo.toml         — single dependency: krun-sys
-entitlements.plist — Hypervisor.framework entitlement for macOS signing
-run.sh             — build, sign, and run in one step (development)
-dist.sh            — build, bundle dylibs, sign (distribution)
+src/main.rs                   — VM setup, build orchestration, libkrunfw pre-loader
+Cargo.toml                    — dependencies: krun-sys, libc, clap
+entitlements.plist            — Hypervisor.framework entitlement for macOS signing
+run.sh                        — build, sign, and run in one step (development)
+dist.sh                       — build, bundle dylibs, sign (distribution)
+vm-image/
+  Containerfile               — Fedora + buildah image for the build VM rootfs
+  make-rootfs.sh              — exports the above as a rootfs directory (requires Podman)
 ```
 
 ## Troubleshooting
@@ -173,3 +203,7 @@ krun-sys = { git = "https://github.com/libkrun/libkrun" }
 ```sh
 export PKG_CONFIG_PATH="$(brew --prefix)/lib/pkgconfig:$PKG_CONFIG_PATH"
 ```
+
+**`mount: permission denied` inside the VM** — the build rootfs process must run as root inside the VM to mount virtiofs shares. Ensure the rootfs does not drop privileges before mounting.
+
+**`buildah: command not found`** — the rootfs does not have buildah installed. See the Prerequisites section for how to prepare a suitable rootfs.
