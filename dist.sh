@@ -52,10 +52,22 @@ for lib in "$LIBS"/*.dylib; do
 done
 codesign --sign - --entitlements entitlements.plist --force "$DIST/$BINARY.bin"
 
-# Wrapper script: sets DYLD_LIBRARY_PATH for the dlopen'd libkrunfw.
+# Wrapper script: sets DYLD_LIBRARY_PATH for the dlopen'd libkrunfw, and
+# handles one-time setup on first run (quarantine removal, rootfs extraction).
 cat > "$DIST/$BINARY" << 'EOF'
 #!/bin/sh
 DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [ ! -f "$DIR/.setup-done" ]; then
+    chmod +w "$DIR/libs"/lib*
+    xattr -d com.apple.quarantine "$DIR/krun-build-image.bin" 2>/dev/null || true
+    xattr -d com.apple.quarantine "$DIR/libs"/* 2>/dev/null || true
+    if [ -f "$DIR/rootfs.zip" ]; then
+        unzip -q "$DIR/rootfs.zip" -d "$DIR"
+    fi
+    touch "$DIR/.setup-done"
+fi
+
 DYLD_LIBRARY_PATH="$DIR/libs:${DYLD_LIBRARY_PATH}" "$DIR/krun-build-image.bin" "$@"
 EOF
 chmod +x "$DIST/$BINARY"
