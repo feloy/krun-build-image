@@ -23,11 +23,14 @@ jobs:
           chmod +x vm-image/make-rootfs.sh
           ./vm-image/make-rootfs.sh ./rootfs
 
+      - name: Archive rootfs
+        run: zip -r rootfs.zip rootfs/
+
       - name: Upload rootfs artifact
         uses: actions/upload-artifact@v4
         with:
           name: krun-build-rootfs
-          path: rootfs/
+          path: rootfs.zip
 
   release:
     runs-on: macos-26  # Apple Silicon (arm64)
@@ -62,7 +65,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: krun-build-rootfs
-          path: dist/rootfs
+          path: dist
 
       - name: Create archive
         run: |
