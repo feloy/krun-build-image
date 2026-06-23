@@ -151,13 +151,14 @@ dist/
 
 End-users need nothing installed. Distribute the `dist/` directory as a zip or DMG.
 
-**Installing as an end-user** — macOS quarantines files downloaded from the internet. Before unzipping, strip the quarantine flag to avoid the "cannot be opened because the developer cannot be verified" dialog:
+**Installing as an end-user** — unzip and run; the wrapper script handles the rest on first launch:
 
 ```sh
-xattr -d com.apple.quarantine krun-build-image-macos-arm64.zip
 unzip krun-build-image-macos-arm64.zip -d krun-build-image
 ./krun-build-image/krun-build-image --rootfs /tmp/build-rootfs -t myapp:latest ./myproject
 ```
+
+On first run the wrapper automatically makes the dylibs writable, strips the macOS quarantine flag from the binary and libraries, and extracts `rootfs.zip` if present. A `.setup-done` sentinel file prevents these steps from repeating on subsequent runs.
 
 **For notarized distribution** (App Store / Gatekeeper), replace `--sign -` in `dist.sh` with your Developer ID certificate and add `--options runtime`:
 
