@@ -33,7 +33,7 @@ if [ ! -f "$DIR/.setup-done" ]; then
     touch "$DIR/.setup-done"
 fi
 
-"$DIR/krun-build-image.bin" "$@"
+DYLD_LIBRARY_PATH=/opt/homebrew/lib "$DIR/krun-build-image.bin" "$@"
 EOF
 chmod +x "$DIST/$BINARY"
 

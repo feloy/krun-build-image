@@ -28,5 +28,9 @@ fi
 mkdir -p /var/lib/containers
 mount -t tmpfs -o size=8192m tmpfs /var/lib/containers
 
+# Pulling images with many layers opens a lock file per layer concurrently.
+# Alpine's default soft limit (1024) is too low; raise it before invoking buildah.
+ulimit -n 65536
+
 buildah bud --isolation chroot --network host -f "$CFILE" -t "$TAG" /build/context
 buildah push --format oci "$TAG" oci:/build/output
