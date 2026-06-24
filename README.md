@@ -22,22 +22,22 @@ krun-build-image [OPTIONS] <CONTEXT>
 | Argument / Option | Description | Default |
 |---|---|---|
 | `<CONTEXT>` | Build context directory | (required) |
-| `--rootfs <DIR>` | VM root filesystem — must have `buildah` installed | (required) |
+| `--rootfs <DIR>` | VM root filesystem — must have `buildah` installed | `<binary dir>/rootfs` |
 | `-f, --file <FILE>` | Path to the Containerfile | `<CONTEXT>/Containerfile` |
 | `-o, --output <DIR>` | Output directory for the OCI image layout | `./output` |
 | `-t, --tag <TAG>` | Image tag used by buildah | `krun-build` |
 | `--cpus <N>` | Number of vCPUs | `2` |
-| `--memory <MB>` | RAM in MiB | `2048` |
+| `--memory <MB>` | RAM in MiB | `4096` |
 
 Example:
 
 ```sh
-krun-build-image --rootfs /tmp/build-rootfs -t myapp:latest ./myproject
+krun-build-image -t myapp:latest ./myproject
 ```
 
-This builds the image from `./myproject/Containerfile` and writes an OCI image layout to `./output/`.
+This builds the image from `./myproject/Containerfile`, uses the rootfs bundled alongside the binary, and writes an OCI image layout to `./output/`.
 
-If the Containerfile is outside the context directory, pass its path explicitly:
+If you have a rootfs elsewhere, or the Containerfile is outside the context directory:
 
 ```sh
 krun-build-image --rootfs /tmp/build-rootfs -f ../Containerfile -t myapp:latest ./myproject
@@ -64,7 +64,18 @@ libkrun bundles its own Linux kernel via [libkrunfw](https://github.com/libkrun/
 
 The `krun-context` and `krun-output` virtiofs shares are not auto-mounted by the kernel — the shell script mounts them at `/build/context` and `/build/output` before running buildah.
 
-## Prerequisites
+## End-user prerequisites
+
+The distributed binary dynamically loads libkrun at runtime, so end-users must install it:
+
+```sh
+brew tap libkrun/krun
+brew install libkrun/krun/libkrun
+```
+
+The rootfs and the binary itself are included in the distribution package — nothing else is required.
+
+## Development prerequisites
 
 ### 1. Rust toolchain
 
@@ -126,17 +137,16 @@ On macOS, processes that use `Hypervisor.framework` must be signed with the `com
 
 ```sh
 chmod +x run.sh
-./run.sh --rootfs /tmp/build-rootfs -t myapp:latest ./myproject
+./run.sh --rootfs /tmp/krun-build-rootfs -t myapp:latest ./myproject
 ```
 
 It builds the binary, signs it with `entitlements.plist`, then runs it. You cannot use `cargo run` directly — every `cargo run` rebuilds the binary, which clears the code signature.
 
 ## Distribution
 
-To produce a self-contained package that end-users can run without installing libkrun:
+To produce a distributable package:
 
 ```sh
-brew install dylibbundler   # one-time
 chmod +x dist.sh
 ./dist.sh
 ```
@@ -145,44 +155,32 @@ This creates a `dist/` directory:
 
 ```text
 dist/
-  krun-build-image       — release binary (signed)
-  libs/            — all dylib dependencies (libkrun, libkrunfw, etc.)
+  krun-build-image        — wrapper script (quarantine removal, rootfs extraction)
+  krun-build-image.bin    — release binary (signed)
+  rootfs.zip              — (add this manually) rootfs archive, extracted on first run
 ```
 
-End-users need nothing installed. Distribute the `dist/` directory as a zip or DMG.
+Distribute the `dist/` directory as a zip or DMG. End-users must install libkrun first (see [End-user prerequisites](#end-user-prerequisites)). On first run the wrapper automatically strips the macOS quarantine flag from the binary and extracts `rootfs.zip` into a `rootfs/` directory alongside the binary. Subsequent runs skip this setup. The binary uses `rootfs/` as the default root filesystem — no `--rootfs` flag required.
 
-**Installing as an end-user** — unzip and run; the wrapper script handles the rest on first launch:
-
-```sh
-unzip krun-build-image-macos-arm64.zip -d krun-build-image
-./krun-build-image/krun-build-image --rootfs /tmp/build-rootfs -t myapp:latest ./myproject
-```
-
-On first run the wrapper automatically makes the dylibs writable, strips the macOS quarantine flag from the binary and libraries, and extracts `rootfs.zip` if present. A `.setup-done` sentinel file prevents these steps from repeating on subsequent runs.
-
-**For notarized distribution** (App Store / Gatekeeper), replace `--sign -` in `dist.sh` with your Developer ID certificate and add `--options runtime`:
+**For notarized distribution** (required for Gatekeeper on external machines without bypassing quarantine), replace `--sign -` in `dist.sh` with your Developer ID certificate and add `--options runtime`:
 
 ```sh
 codesign --sign "Developer ID Application: You (TEAMID)" \
          --options runtime \
          --entitlements entitlements.plist \
-         --force dist/krun-build-image
+         --force dist/krun-build-image.bin
 ```
 
 Then notarize with `xcrun notarytool`.
 
-### Why libkrunfw needs special handling
-
-`libkrun` loads its kernel (`libkrunfw`) via `dlopen()` at runtime using just the filename — it is not a static link-time dependency, so `dylibbundler` won't see it. `dist.sh` copies it manually and `src/main.rs` pre-loads it as `RTLD_GLOBAL` before any libkrun call, so that libkrun's own `dlopen()` finds it already in memory. This avoids needing `DYLD_LIBRARY_PATH` (which is stripped under hardened runtime).
-
 ## Project structure
 
 ```text
-src/main.rs                   — VM setup, build orchestration, libkrunfw pre-loader
+src/main.rs                   — VM setup and build orchestration
 Cargo.toml                    — dependencies: krun-sys, libc, clap
 entitlements.plist            — Hypervisor.framework entitlement for macOS signing
 run.sh                        — build, sign, and run in one step (development)
-dist.sh                       — build, bundle dylibs, sign (distribution)
+dist.sh                       — build and sign for distribution
 vm-image/
   Containerfile               — Fedora + buildah image for the build VM rootfs
   make-rootfs.sh              — exports the above as a rootfs directory (requires Podman)
@@ -197,7 +195,7 @@ vm-image/
 krun-sys = { git = "https://github.com/libkrun/libkrun" }
 ```
 
-**`libkrunfw` not found at runtime** — libkrun loads the kernel via `dlopen` at runtime, so it needs `DYLD_LIBRARY_PATH` to include the Homebrew lib directory (see Prerequisites above).
+**`libkrunfw` not found at runtime** — libkrun loads its kernel via `dlopen` at runtime. Make sure `DYLD_LIBRARY_PATH` includes Homebrew's lib directory (see Prerequisites above), or that libkrun's own RPATH already points there.
 
 **`pkg-config` can't find libkrun** — make sure Homebrew's prefix is on your `PKG_CONFIG_PATH`:
 
