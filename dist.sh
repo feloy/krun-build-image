@@ -23,7 +23,9 @@ codesign --sign - --entitlements entitlements.plist --force "$DIST/$BINARY.bin"
 # rootfs extraction).
 cat > "$DIST/$BINARY" << 'EOF'
 #!/bin/sh
-DIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolve the real directory of this script, even when invoked via PATH.
+_cmd="$(command -v "$0" 2>/dev/null || echo "$0")"
+DIR="$(cd "$(dirname "$_cmd")" && pwd)"
 
 if [ ! -f "$DIR/.setup-done" ]; then
     xattr -d com.apple.quarantine "$DIR/krun-build-image.bin" 2>/dev/null || true
