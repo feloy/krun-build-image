@@ -167,7 +167,8 @@ dist/
 To produce `rootfs.tar.gz` from the directory exported by `make-rootfs.sh`:
 
 ```sh
-tar -czf dist/rootfs.tar.gz -C /tmp/krun-build-rootfs .
+./vm-image/make-rootfs.sh /tmp/rootfs
+tar -czf dist/rootfs.tar.gz -C /tmp rootfs
 ```
 
 Distribute the `dist/` directory as a zip or DMG. End-users must install libkrun first (see [End-user prerequisites](#end-user-prerequisites)). On first run the wrapper automatically strips the macOS quarantine flag from the binary and extracts `rootfs.tar.gz` into a `rootfs/` directory alongside the binary. Subsequent runs skip this setup. The binary uses `rootfs/` as the default root filesystem — no `--rootfs` flag required.
