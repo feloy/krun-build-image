@@ -9,7 +9,7 @@ When you run `krun-build-image`, it:
 1. Spins up a lightweight Linux microVM on your Mac using Apple's [Hypervisor.framework](https://developer.apple.com/documentation/hypervisor) — no Docker, no QEMU, no root required.
 2. Mounts three host directories into the VM via [virtio-fs](https://virtio-fs.gitlab.io/): the build rootfs (as `/`), the build context, and the output directory.
 3. Runs `buildah bud` inside the VM to build the image from the Containerfile.
-4. Exports the resulting OCI image layout to the output directory on the host and exits.
+4. Exports the resulting image as a Docker archive (`.tar`) to the host and exits.
 
 The VM is fully isolated: it runs its own Linux kernel with its own process namespace, but shares no persistent state with your host.
 
@@ -24,7 +24,7 @@ krun-build-image [OPTIONS] <CONTEXT>
 | `<CONTEXT>` | Build context directory | (required) |
 | `--rootfs <DIR>` | VM root filesystem — must have `buildah` installed | `<binary dir>/rootfs` |
 | `-f, --file <FILE>` | Path to the Containerfile | `<CONTEXT>/Containerfile` |
-| `-o, --output <DIR>` | Output directory for the OCI image layout | `./output` |
+| `-o, --output <FILE>` | Output path for the Docker archive | `./output.tar` |
 | `-t, --tag <TAG>` | Image tag used by buildah | `krun-build` |
 | `--cpus <N>` | Number of vCPUs | `2` |
 | `--memory <MB>` | RAM in MiB | `4096` |
@@ -35,7 +35,11 @@ Example:
 krun-build-image -t myapp:latest ./myproject
 ```
 
-This builds the image from `./myproject/Containerfile`, uses the rootfs bundled alongside the binary, and writes an OCI image layout to `./output/`.
+This builds the image from `./myproject/Containerfile`, uses the rootfs bundled alongside the binary, and writes a Docker archive to `./output.tar`. Load it into Podman with:
+
+```sh
+podman load -i output.tar
+```
 
 If you have a rootfs elsewhere, or the Containerfile is outside the context directory:
 
@@ -55,14 +59,14 @@ The Rust crate [`krun-sys`](https://crates.io/crates/krun-sys) provides generate
 | `krun_set_vm_config(ctx, vcpus, ram_mib)` | Configures the VM resources |
 | `krun_add_virtiofs(ctx, "/dev/root", rootfs)` | Mounts the build rootfs as `/` inside the VM (`"/dev/root"` = `KRUN_FS_ROOT_TAG`) |
 | `krun_add_virtiofs(ctx, "krun-context", context)` | Exposes the build context directory to the VM |
-| `krun_add_virtiofs(ctx, "krun-output", output)` | Exposes the output directory to the VM |
+| `krun_add_virtiofs(ctx, "krun-output", output_dir)` | Exposes the output directory to the VM |
 | `krun_set_workdir(ctx, "/")` | Sets the working directory inside the VM |
 | `krun_set_exec(ctx, "/bin/sh", argv, envp)` | Runs a shell script that mounts the virtiofs shares and invokes `buildah bud` |
 | `krun_start_enter(ctx)` | Boots the VM — this call transfers control and does not return on success |
 
 libkrun bundles its own Linux kernel via [libkrunfw](https://github.com/libkrun/homebrew-krun), so you do not need to supply or configure a kernel yourself.
 
-The `krun-context` and `krun-output` virtiofs shares are not auto-mounted by the kernel — the shell script mounts them at `/build/context` and `/build/output` before running buildah.
+The `krun-context` and `krun-output` virtiofs shares are not auto-mounted by the kernel — the shell script mounts them at `/build/context` and `/build/output` before running buildah. The Docker archive is written to `/build/output/<filename>` and appears on the host at the path given by `--output`.
 
 ## End-user prerequisites
 

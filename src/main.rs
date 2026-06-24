@@ -1,6 +1,6 @@
 use std::ffi::CString;
 use std::os::raw::c_char;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::ptr;
 
 use clap::Parser;
@@ -49,8 +49,8 @@ struct Cli {
     #[arg(long)]
     rootfs: Option<PathBuf>,
 
-    /// Output directory for the OCI image layout
-    #[arg(long, short = 'o', default_value = "output")]
+    /// Output path for the Docker archive
+    #[arg(long, short = 'o', default_value = "output.tar")]
     output: PathBuf,
 
     /// Image tag
@@ -109,12 +109,21 @@ fn main() {
         }
     };
 
-    std::fs::create_dir_all(&cli.output).unwrap_or_else(|e| {
-        eprintln!("error: creating output directory '{}': {}", cli.output.display(), e);
+    let output_filename = cli.output
+        .file_name()
+        .unwrap_or_else(|| {
+            eprintln!("error: output path '{}' has no filename", cli.output.display());
+            std::process::exit(1);
+        })
+        .to_string_lossy()
+        .into_owned();
+    let output_parent = cli.output.parent().unwrap_or(Path::new(".")).to_path_buf();
+    std::fs::create_dir_all(&output_parent).unwrap_or_else(|e| {
+        eprintln!("error: creating output directory '{}': {}", output_parent.display(), e);
         std::process::exit(1);
     });
-    let output = cli.output.canonicalize().unwrap_or_else(|e| {
-        eprintln!("error: output directory '{}': {}", cli.output.display(), e);
+    let output_dir = output_parent.canonicalize().unwrap_or_else(|e| {
+        eprintln!("error: output directory '{}': {}", output_parent.display(), e);
         std::process::exit(1);
     });
 
@@ -146,14 +155,15 @@ fn main() {
         "Building OCI image (context: {}, Containerfile: {}, output: {})...",
         context.display(),
         containerfile.display(),
-        output.display(),
+        output_dir.join(&output_filename).display(),
     );
 
     // Convert host paths to CStrings. All bindings must outlive both unsafe blocks
     // below (krun_set_exec stores pointers; krun_start_enter consumes them).
-    let rootfs_c    = CString::new(rootfs.to_str().unwrap()).unwrap();
-    let context_c   = CString::new(context.to_str().unwrap()).unwrap();
-    let output_c    = CString::new(output.to_str().unwrap()).unwrap();
+    let rootfs_c      = CString::new(rootfs.to_str().unwrap()).unwrap();
+    let context_c     = CString::new(context.to_str().unwrap()).unwrap();
+    let output_dir_c  = CString::new(output_dir.to_str().unwrap()).unwrap();
+    let output_file_c = CString::new(output_filename.as_str()).unwrap();
     let cfile_dir_c = cfile_host_dir
         .as_ref()
         .map(|p| CString::new(p.to_str().unwrap()).unwrap());
@@ -183,7 +193,7 @@ fn main() {
         // /dev/root is KRUN_FS_ROOT_TAG — the bundled kernel mounts this as /.
         check("krun_add_virtiofs(root)",    krun_add_virtiofs(ctx_id, tag_root.as_ptr(),    rootfs_c.as_ptr()));
         check("krun_add_virtiofs(context)", krun_add_virtiofs(ctx_id, tag_context.as_ptr(), context_c.as_ptr()));
-        check("krun_add_virtiofs(output)",  krun_add_virtiofs(ctx_id, tag_output.as_ptr(),  output_c.as_ptr()));
+        check("krun_add_virtiofs(output)",  krun_add_virtiofs(ctx_id, tag_output.as_ptr(),  output_dir_c.as_ptr()));
 
         if let Some(ref cfile_c) = cfile_dir_c {
             check("krun_add_virtiofs(cfile)", krun_add_virtiofs(ctx_id, tag_cfile.as_ptr(), cfile_c.as_ptr()));
@@ -194,9 +204,10 @@ fn main() {
         // The kernel's shebang mechanism prepends the script path as argv[0] when
         // exec'ing an interpreted script, so our array starts at what will be $1.
         let argv: &[*const c_char] = &[
-            arg_cfile.as_ptr(),   // $1 — Containerfile path inside the VM
-            arg_tag.as_ptr(),     // $2 — image tag
-            arg_outside.as_ptr(), // $3 — "1" if Containerfile is outside context
+            arg_cfile.as_ptr(),      // $1 — Containerfile path inside the VM
+            arg_tag.as_ptr(),        // $2 — image tag
+            arg_outside.as_ptr(),    // $3 — "1" if Containerfile is outside context
+            output_file_c.as_ptr(),  // $4 — output filename inside the mounted dir
             ptr::null(),
         ];
         let envp: &[*const c_char] = &[env_path.as_ptr(), ptr::null()];

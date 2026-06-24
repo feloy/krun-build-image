@@ -1,14 +1,16 @@
 #!/bin/sh
 # Invoked by the krun-hello host binary inside the microVM.
-# Usage: krun-build <containerfile-vm-path> <tag> <cfile-outside-context>
+# Usage: krun-build <containerfile-vm-path> <tag> <cfile-outside-context> <output-filename>
 #   containerfile-vm-path  path to the Containerfile inside the VM
 #   tag                    image tag for buildah
 #   cfile-outside-context  1 if the Containerfile is outside the build context, 0 otherwise
+#   output-filename        filename for the Docker archive written to /build/output/
 set -e
 
 CFILE="$1"
 TAG="$2"
 CFILE_OUTSIDE="${3:-0}"
+OUTPUT_FILE="$4"
 
 mkdir -p /build/context /build/output
 mount -t virtiofs krun-context /build/context
@@ -33,4 +35,4 @@ mount -t tmpfs -o size=8192m tmpfs /var/lib/containers
 ulimit -n 65536
 
 buildah bud --isolation chroot --network host -f "$CFILE" -t "$TAG" /build/context
-buildah push --format oci "$TAG" oci:/build/output
+buildah push --format docker "$TAG" "docker-archive:/build/output/$OUTPUT_FILE"
