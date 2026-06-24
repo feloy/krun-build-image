@@ -27,8 +27,8 @@ DIR="$(cd "$(dirname "$0")" && pwd)"
 
 if [ ! -f "$DIR/.setup-done" ]; then
     xattr -d com.apple.quarantine "$DIR/krun-build-image.bin" 2>/dev/null || true
-    if [ -f "$DIR/rootfs.zip" ]; then
-        unzip -q "$DIR/rootfs.zip" -d "$DIR"
+    if [ -f "$DIR/rootfs.tar.gz" ]; then
+        tar -xzf "$DIR/rootfs.tar.gz" -C "$DIR"
     fi
     touch "$DIR/.setup-done"
 fi

@@ -161,10 +161,16 @@ This creates a `dist/` directory:
 dist/
   krun-build-image        — wrapper script (quarantine removal, rootfs extraction)
   krun-build-image.bin    — release binary (signed)
-  rootfs.zip              — (add this manually) rootfs archive, extracted on first run
+  rootfs.tar.gz           — (add this manually) rootfs archive, extracted on first run
 ```
 
-Distribute the `dist/` directory as a zip or DMG. End-users must install libkrun first (see [End-user prerequisites](#end-user-prerequisites)). On first run the wrapper automatically strips the macOS quarantine flag from the binary and extracts `rootfs.zip` into a `rootfs/` directory alongside the binary. Subsequent runs skip this setup. The binary uses `rootfs/` as the default root filesystem — no `--rootfs` flag required.
+To produce `rootfs.tar.gz` from the directory exported by `make-rootfs.sh`:
+
+```sh
+tar -czf dist/rootfs.tar.gz -C /tmp/krun-build-rootfs .
+```
+
+Distribute the `dist/` directory as a zip or DMG. End-users must install libkrun first (see [End-user prerequisites](#end-user-prerequisites)). On first run the wrapper automatically strips the macOS quarantine flag from the binary and extracts `rootfs.tar.gz` into a `rootfs/` directory alongside the binary. Subsequent runs skip this setup. The binary uses `rootfs/` as the default root filesystem — no `--rootfs` flag required.
 
 **For notarized distribution** (required for Gatekeeper on external machines without bypassing quarantine), replace `--sign -` in `dist.sh` with your Developer ID certificate and add `--options runtime`:
 
