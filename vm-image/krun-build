@@ -12,6 +12,18 @@ TAG="$2"
 CFILE_OUTSIDE="${3:-0}"
 OUTPUT_FILE="$4"
 
+on_exit() {
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        oom=$(dmesg 2>/dev/null | grep -iE 'oom|killed process|out of memory' | tail -5)
+        if [ -n "$oom" ]; then
+            printf '\n[krun-build] OOM detected:\n%s\n' "$oom" >&2
+            printf '[krun-build] Hint: retry with a larger --memory value\n' >&2
+        fi
+    fi
+}
+trap on_exit EXIT
+
 mkdir -p /build/context /build/output
 mount -t virtiofs krun-context /build/context
 mount -t virtiofs krun-output  /build/output
@@ -30,9 +42,21 @@ fi
 mkdir -p /var/lib/containers
 mount -t tmpfs -o size=8192m tmpfs /var/lib/containers
 
+# buildah writes lock files under /run/containers, which sits on the
+# virtiofs-mounted rootfs and persists between VM runs. Mount a tmpfs
+# there so each run starts with a clean state.
+mkdir -p /run/containers
+mount -t tmpfs tmpfs /run/containers
+
+# buildah uses /var/tmp for temporary blob files during image pulls.
+# Keeping this on the virtiofs-mounted rootfs opens a host-side fd for
+# every file, exhausting the host process's fd limit. Use tmpfs instead.
+mkdir -p /var/tmp
+mount -t tmpfs tmpfs /var/tmp
+
 # Pulling images with many layers opens a lock file per layer concurrently.
-# Alpine's default soft limit (1024) is too low; raise it before invoking buildah.
-ulimit -n 65536
+# Alpine's default soft limit (1024) is too low; raise it to the hard limit.
+ulimit -n "$(ulimit -Hn)"
 
 buildah bud --isolation chroot --network host -f "$CFILE" -t "$TAG" /build/context
 buildah push --format docker "$TAG" "docker-archive:/build/output/$OUTPUT_FILE"
