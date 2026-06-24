@@ -24,7 +24,7 @@ jobs:
           ./vm-image/make-rootfs.sh ./rootfs
 
       - name: Archive rootfs
-        run: tar -czf rootfs.tar.gz -C rootfs .
+        run: tar -czf rootfs.tar.gz rootfs/
 
       - name: Upload rootfs artifact
         uses: actions/upload-artifact@v4
