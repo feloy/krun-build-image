@@ -13,6 +13,32 @@ When you run `krun-build-image`, it:
 
 The VM is fully isolated: it runs its own Linux kernel with its own process namespace, but shares no persistent state with your host.
 
+## Installation
+
+Download the latest release archive from the [GitHub releases page](https://github.com/feloy/krun-build-image/releases) and unzip it to a directory of your choice:
+
+```sh
+unzip krun-build-image-macos-arm64.zip -d /path/to/krun-build-image
+```
+
+Add that directory to your `PATH` so the `krun-build-image` command is available anywhere (the rootfs is bundled in the same directory and is found automatically):
+
+```sh
+export PATH="/path/to/krun-build-image:$PATH"
+```
+
+Add that line to your `~/.zshrc` to make it permanent.
+
+Then install libkrun, which the binary loads at runtime:
+
+```sh
+brew tap libkrun/krun
+brew trust libkrun/krun
+brew install libkrun/krun/libkrun
+```
+
+The rootfs and the binary itself are included in the archive — nothing else is required.
+
 ## Usage
 
 ```sh
@@ -67,17 +93,6 @@ The Rust crate [`krun-sys`](https://crates.io/crates/krun-sys) provides generate
 libkrun bundles its own Linux kernel via [libkrunfw](https://github.com/libkrun/homebrew-krun), so you do not need to supply or configure a kernel yourself.
 
 The `krun-context` and `krun-output` virtiofs shares are not auto-mounted by the kernel — the shell script mounts them at `/build/context` and `/build/output` before running buildah. The Docker archive is written to `/build/output/<filename>` and appears on the host at the path given by `--output`.
-
-## End-user prerequisites
-
-The distributed binary dynamically loads libkrun at runtime, so end-users must install it:
-
-```sh
-brew tap libkrun/krun
-brew install libkrun/krun/libkrun
-```
-
-The rootfs and the binary itself are included in the distribution package — nothing else is required.
 
 ## Development prerequisites
 
@@ -171,7 +186,7 @@ To produce `rootfs.tar.gz` from the directory exported by `make-rootfs.sh`:
 tar -czf dist/rootfs.tar.gz -C /tmp rootfs
 ```
 
-Distribute the `dist/` directory as a zip or DMG. End-users must install libkrun first (see [End-user prerequisites](#end-user-prerequisites)). On first run the wrapper automatically strips the macOS quarantine flag from the binary and extracts `rootfs.tar.gz` into a `rootfs/` directory alongside the binary. Subsequent runs skip this setup. The binary uses `rootfs/` as the default root filesystem — no `--rootfs` flag required.
+Distribute the `dist/` directory as a zip or DMG. End-users must install libkrun first (see [Installation](#installation)). On first run the wrapper automatically strips the macOS quarantine flag from the binary and extracts `rootfs.tar.gz` into a `rootfs/` directory alongside the binary. Subsequent runs skip this setup. The binary uses `rootfs/` as the default root filesystem — no `--rootfs` flag required.
 
 **For notarized distribution** (required for Gatekeeper on external machines without bypassing quarantine), replace `--sign -` in `dist.sh` with your Developer ID certificate and add `--options runtime`:
 
