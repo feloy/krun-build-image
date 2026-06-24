@@ -117,7 +117,10 @@ fn main() {
         })
         .to_string_lossy()
         .into_owned();
-    let output_parent = cli.output.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let output_parent = cli.output.parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
     std::fs::create_dir_all(&output_parent).unwrap_or_else(|e| {
         eprintln!("error: creating output directory '{}': {}", output_parent.display(), e);
         std::process::exit(1);
