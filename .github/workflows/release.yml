@@ -46,6 +46,7 @@ jobs:
       - name: Install prerequisites
         run: |
           brew tap libkrun/krun
+          brew trust libkrun/krun
           brew install libkrun/krun/libkrun llvm dylibbundler
 
       - name: Set build environment
