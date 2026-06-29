@@ -1,0 +1,100 @@
+name: Integration Test
+
+# Prerequisites — one-time configuration required before this workflow can run:
+#
+# 1. Self-hosted runner (Settings → Actions → Runners → New self-hosted runner)
+#    A bare-metal macOS arm64 machine with kern.hv_support=1 is required.
+#    GitHub-hosted macOS runners run inside VMs (kern.hv_support=0), making the
+#    Apple Hypervisor framework unavailable; krun_start_enter would fail with EINVAL.
+#    Register the runner with labels: macos, arm64
+#    (the self-hosted label is added automatically).
+#
+# 2. Environment with required reviewers (Settings → Environments → New environment)
+#    Name: integration
+#    Enable "Required reviewers" and add maintainers as reviewers.
+#    This ensures that pull requests from untrusted contributors cannot run
+#    arbitrary code on the self-hosted runner without a maintainer's approval.
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-rootfs:
+    runs-on: ubuntu-24.04-arm  # native arm64 — podman works without a VM
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Install podman
+        run: sudo apt-get update && sudo apt-get install -y podman
+
+      - name: Build VM rootfs
+        run: |
+          chmod +x vm-image/make-rootfs.sh
+          ./vm-image/make-rootfs.sh ./rootfs
+
+      - name: Archive rootfs
+        run: tar -czf rootfs.tar.gz rootfs/
+
+      - name: Upload rootfs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: krun-build-rootfs
+          path: rootfs.tar.gz
+
+  integration-test:
+    runs-on: [self-hosted, macos, arm64]
+    needs: build-rootfs
+    environment: integration  # requires maintainer approval before the job runs
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: dtolnay/rust-toolchain@67ef31d5b988238dd797d409d6f9574278e20537 # master
+        with:
+          toolchain: stable
+
+      - name: Install prerequisites
+        run: |
+          brew tap libkrun/krun
+          brew trust libkrun/krun
+          brew install libkrun/krun/libkrun llvm dylibbundler
+
+      - name: Set build environment
+        run: |
+          PREFIX=$(brew --prefix)
+          echo "DYLD_LIBRARY_PATH=$PREFIX/lib:$PREFIX/opt/llvm/lib" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$PREFIX/opt/llvm/lib" >> "$GITHUB_ENV"
+
+      - name: Build binary
+        run: cargo build --release
+
+      - name: Sign binary
+        run: |
+          codesign --sign - --entitlements entitlements.plist --force \
+            target/release/krun-build-image
+
+      - name: Download rootfs
+        uses: actions/download-artifact@v4
+        with:
+          name: krun-build-rootfs
+
+      - name: Extract rootfs
+        run: tar -xzf rootfs.tar.gz
+
+      - name: Build image from test Containerfile
+        run: |
+          ./target/release/krun-build-image \
+            --rootfs ./rootfs \
+            --tag krun-integration-test \
+            --output krun-integration-test.tar \
+            tests/integration
+
+      - name: Verify output image archive
+        run: |
+          test -s krun-integration-test.tar
+          tar -tf krun-integration-test.tar | grep -q manifest.json
