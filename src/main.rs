@@ -29,11 +29,12 @@ fn check(call: &str, ret: i32) {
     dbg_log!("{} -> {}", call, ret);
 }
 
-/// Build an OCI image from a Containerfile inside a libkrun microVM.
+/// Build a container image from a Containerfile inside a libkrun microVM
+/// and export its filesystem as a flattened rootfs tarball.
 ///
 /// The VM boots using the provided rootfs (which must have buildah installed),
 /// mounts the build context and output directory via virtio-fs, and runs
-/// buildah to produce an OCI image layout at the output path.
+/// buildah to produce a flat rootfs tarball at the output path.
 #[derive(Parser)]
 #[command(name = "krun-build-image")]
 struct Cli {
@@ -49,7 +50,7 @@ struct Cli {
     #[arg(long)]
     rootfs: Option<PathBuf>,
 
-    /// Output path for the Docker archive
+    /// Output path for the flattened rootfs tarball
     #[arg(long, short = 'o', default_value = "output.tar")]
     output: PathBuf,
 
@@ -155,7 +156,7 @@ fn main() {
     );
 
     println!(
-        "Building OCI image (context: {}, Containerfile: {}, output: {})...",
+        "Building image (context: {}, Containerfile: {}, output: {})...",
         context.display(),
         containerfile.display(),
         output_dir.join(&output_filename).display(),

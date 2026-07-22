@@ -1,6 +1,6 @@
 # krun-build-image
 
-A Rust CLI that builds OCI images from a Containerfile inside a lightweight Linux microVM — using [libkrun](https://github.com/libkrun/libkrun).
+A Rust CLI that builds container images from a Containerfile inside a lightweight Linux microVM — using [libkrun](https://github.com/libkrun/libkrun) — and exports the result as a flattened rootfs tarball.
 
 ## What it does
 
@@ -9,7 +9,7 @@ When you run `krun-build-image`, it:
 1. Spins up a lightweight Linux microVM on your Mac using Apple's [Hypervisor.framework](https://developer.apple.com/documentation/hypervisor) — no Docker, no QEMU, no root required.
 2. Mounts three host directories into the VM via [virtio-fs](https://virtio-fs.gitlab.io/): the build rootfs (as `/`), the build context, and the output directory.
 3. Runs `buildah bud` inside the VM to build the image from the Containerfile.
-4. Exports the resulting image as a Docker archive (`.tar`) to the host and exits.
+4. Exports the resulting filesystem as a flattened rootfs tarball (`.tar`) to the host and exits.
 
 The VM is fully isolated: it runs its own Linux kernel with its own process namespace, but shares no persistent state with your host.
 
@@ -50,7 +50,7 @@ krun-build-image [OPTIONS] <CONTEXT>
 | `<CONTEXT>` | Build context directory | (required) |
 | `--rootfs <DIR>` | VM root filesystem — must have `buildah` installed | `<binary dir>/rootfs` |
 | `-f, --file <FILE>` | Path to the Containerfile | `<CONTEXT>/Containerfile` |
-| `-o, --output <FILE>` | Output path for the Docker archive | `./output.tar` |
+| `-o, --output <FILE>` | Output path for the flattened rootfs tarball | `./output.tar` |
 | `-t, --tag <TAG>` | Image tag used by buildah | `krun-build` |
 | `--cpus <N>` | Number of vCPUs | `2` |
 | `--memory <MB>` | RAM in MiB | `4096` |
@@ -61,10 +61,10 @@ Example:
 krun-build-image -t myapp:latest ./myproject
 ```
 
-This builds the image from `./myproject/Containerfile`, uses the rootfs bundled alongside the binary, and writes a Docker archive to `./output.tar`. Load it into Podman with:
+This builds the image from `./myproject/Containerfile`, uses the rootfs bundled alongside the binary, and writes a flattened rootfs tarball to `./output.tar`. Extract it with:
 
 ```sh
-podman load -i output.tar
+tar -xf output.tar -C /path/to/rootfs
 ```
 
 If you have a rootfs elsewhere, or the Containerfile is outside the context directory:
@@ -92,7 +92,7 @@ The Rust crate [`krun-sys`](https://crates.io/crates/krun-sys) provides generate
 
 libkrun bundles its own Linux kernel via [libkrunfw](https://github.com/libkrun/homebrew-krun), so you do not need to supply or configure a kernel yourself.
 
-The `krun-context` and `krun-output` virtiofs shares are not auto-mounted by the kernel — the shell script mounts them at `/build/context` and `/build/output` before running buildah. The Docker archive is written to `/build/output/<filename>` and appears on the host at the path given by `--output`.
+The `krun-context` and `krun-output` virtiofs shares are not auto-mounted by the kernel — the shell script mounts them at `/build/context` and `/build/output` before running buildah. The flattened rootfs tarball is written to `/build/output/<filename>` and appears on the host at the path given by `--output`.
 
 ## Development prerequisites
 
