@@ -1,2 +1,2 @@
 FROM alpine:latest
-RUN echo "krun-build-image integration test" > /hello.txt
+RUN mkdir -p /app && echo "krun-build-image integration test" > /app/hello.txt

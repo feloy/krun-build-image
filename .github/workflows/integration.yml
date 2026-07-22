@@ -94,7 +94,9 @@ jobs:
             --output krun-integration-test.tar \
             tests/integration
 
-      - name: Verify output image archive
+      - name: Verify output rootfs tarball
         run: |
           test -s krun-integration-test.tar
-          tar -tf krun-integration-test.tar | grep -q manifest.json
+          mkdir -p /tmp/rootfs-check
+          tar -xf krun-integration-test.tar -C /tmp/rootfs-check
+          grep -q "krun-build-image integration test" /tmp/rootfs-check/app/hello.txt
